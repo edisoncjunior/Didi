@@ -57,14 +57,9 @@ def bollinger(closes):
 # =========================
 
 ensure_log_files()
-<<<<<<< HEAD
+
 print("🚀 Bot Bollinger DOGEUSDT 15min iniciado")
 send_telegram("🚀 Bot Bollinger DOGEUSDT iniciado")
-=======
-print("🚀 Bot Bollinger ARPAUSDT 15m iniciado")
-send_telegram("🚀 Bot Bollinger ARPAUSDT iniciado")
->>>>>>> 1e111252e09a41e291c25630ada9df892d687624
-
 
 # =========================
 # LOOP PRINCIPAL
