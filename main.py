@@ -31,7 +31,7 @@ def agora_sp():
     return datetime.now(pytz.timezone("America/Sao_Paulo"))
 
 def ts_str():
-    return agora_sp().strftime("%Y-%m-%d %H:%M:%S"
+    return agora_sp().strftime("%Y-%m-%d %H:%M:%S")
 
 # =========================
 # MEXC
