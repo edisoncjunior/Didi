@@ -109,23 +109,64 @@ def today_str():
 # =====================================================
 # BINANCE
 # =====================================================
-
 def fetch_klines(symbol, interval="15m", limit=KLINES_LIMIT):
-    r = requests.get(
-        f"{BINANCE_FAPI}/fapi/v1/klines",
-        params={"symbol": symbol, "interval": interval, "limit": limit},
-        timeout=10
-    )
-    r.raise_for_status()
-    cols = [
-        "open_time","open","high","low","close","volume",
-        "close_time","qav","trades","tb_base","tb_quote","ignore"
-    ]
-    df = pd.DataFrame(r.json(), columns=cols)
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-    for c in ["open","high","low","close","volume"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df.set_index("open_time").iloc[:-1]
+    try:
+        r = requests.get(
+            f"{BINANCE_FAPI}/fapi/v1/klines",
+            params={
+                "symbol": symbol,
+                "interval": interval,
+                "limit": limit
+            },
+            timeout=10
+        )
+
+        if r.status_code != 200:
+            LOGGER.warning(
+                "Binance HTTP %s para %s | body=%s",
+                r.status_code, symbol, r.text[:200]
+            )
+            return None
+
+        data = r.json()
+        if not isinstance(data, list) or len(data) == 0:
+            LOGGER.warning("Resposta inválida Binance (%s): %s", symbol, data)
+            return None
+
+        cols = [
+            "open_time","open","high","low","close","volume",
+            "close_time","qav","trades","tb_base","tb_quote","ignore"
+        ]
+
+        df = pd.DataFrame(data, columns=cols)
+        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
+
+        for c in ["open", "high", "low", "close", "volume"]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        df = df.set_index("open_time").iloc[:-1]
+
+        if df.empty:
+            LOGGER.warning("DF vazio após parse (%s)", symbol)
+            return None
+
+        return df
+
+    except requests.exceptions.RequestException as e:
+        LOGGER.warning("Erro HTTP Binance (%s): %s", symbol, e)
+        return None
+
+    except Exception as e:
+        LOGGER.exception("Erro inesperado fetch_klines (%s)", symbol)
+        return None
+
+
+# =====================================================
+def analyze_symbol(symbol):
+    df = fetch_klines(symbol)
+
+    if df is None or df.empty or len(df) < 50:
+        return None
 
 # =====================================================
 # INDICADORES
