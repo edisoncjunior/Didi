@@ -1,43 +1,47 @@
 ﻿# main.py
-# versão ajstada para DOGEUSDT 
-# retirada função statistics 
-
+# Lógica robusta: alerta ≠ entrada
 import time
 import requests
 import numpy as np
+from datetime import datetime
+import pytz
 
 from security import send_telegram
-
 
 # =========================
 # CONFIGURAÇÕES
 # =========================
-SYMBOL = "DOGEUSDT"
-
-INTERVAL = "15m"
+SYMBOL = "ARPAUSDT"
+INTERVAL = "1m"
 
 BOLL_PERIOD = 8
 BOLL_STD = 2
+ENTRY_PCT = 0.2
 
 LOOP_SLEEP = 2
-last_signal = None
+
+trade_active = False
+last_alert = None
+
+
+# =========================
+# TEMPO SP
+# =========================
+def agora_sp():
+    return datetime.now(pytz.timezone("America/Sao_Paulo"))
+
+def ts_str():
+    return agora_sp().strftime("%Y-%m-%d %H:%M:%S"
 
 # =========================
 # MEXC
 # =========================
 def get_klines(symbol, interval, limit=200):
-    url = "https://api.mexc.com/api/v3/klines"
     r = requests.get(
-        url,
-        params={
-            "symbol": symbol,
-            "interval": interval,
-            "limit": limit
-        },
+        "https://api.mexc.com/api/v3/klines",
+        params={"symbol": symbol, "interval": interval, "limit": limit},
         timeout=10,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
+        headers={"User-Agent": "Mozilla/5.0"}
     )
     r.raise_for_status()
     return r.json()
@@ -47,20 +51,18 @@ def bollinger(closes):
     arr = np.array(closes)
     sma = arr[-BOLL_PERIOD:].mean()
     std = arr[-BOLL_PERIOD:].std()
-    upper = sma + BOLL_STD * std
-    lower = sma - BOLL_STD * std
-    return upper, lower
+    return sma + BOLL_STD * std, sma - BOLL_STD * std
 
 
 # =========================
 # INIT
 # =========================
+print("🚀 Bot Bollinger iniciado (alerta + entrada)")
+send_telegram("🚀 Bot Bollinger iniciado")
 
-print("🚀 Bot Bollinger DOGEUSDT 15min iniciado")
-send_telegram("🚀 Bot Bollinger DOGEUSDT iniciado")
 
 # =========================
-# LOOP PRINCIPAL
+# LOOP
 # =========================
 while True:
     try:
@@ -69,41 +71,43 @@ while True:
         price = closes[-1]
 
         upper, lower = bollinger(closes)
-        verificar_sinais(closes)
 
-        ts = agora_sp_str()
-        print(f"{ts} | Preço: {price:.8f} | Upper: {upper:.8f} | Lower: {lower:.8f}")
-
-        # ===== SHORT =====
+        # ===== ROMPIMENTO SUPERIOR =====
         if price > upper:
             pct = (price - upper) / upper * 100
-            label = "SHORT STRONG" if pct >= 0.2 else "SHORT"
 
-            if label != last_signal:
-                try:
-                    send_telegram(f"{label} DOGEUSDT\nPreço: {price:.8f}")
-                except Exception as e:
-                    print("[Aviso Telegram]", e)
+            # ALERTA INFORMATIVO
+            if last_alert != "SHORT":
+                send_telegram(
+                    f"⚠️ ALERTA SHORT\nPreço: {price:.8f}\nRuptura: {pct:.2f}%"
+                )
+                last_alert = "SHORT"
 
-                write_signal_log(ts, SYMBOL, label, price, pct, "upper")
-                registrar_sinal("SHORT", price, closes)
-                last_signal = label
+            # ENTRADA REAL
+            if pct >= ENTRY_PCT and not trade_active:
+                send_telegram(
+                    f"🔴 ENTRADA SHORT\nPreço: {price:.8f}\nRuptura: {pct:.2f}%"
+                )
+                trade_active = True
 
-        # ===== LONG =====
+        # ===== ROMPIMENTO INFERIOR =====
         elif price < lower:
             pct = (lower - price) / lower * 100
-            label = "LONG STRONG" if pct >= 0.2 else "LONG"
 
-            if label != last_signal:
-                try:
-                    send_telegram(f"{label} DOGEUSDT\nPreço: {price:.8f}")
-                except Exception as e:
-                    print("[Aviso Telegram]", e)
+            if last_alert != "LONG":
+                send_telegram(
+                    f"⚠️ ALERTA LONG\nPreço: {price:.8f}\nRuptura: {pct:.2f}%"
+                )
+                last_alert = "LONG"
 
-                write_signal_log(ts, SYMBOL, label, price, pct, "lower")
-                registrar_sinal("LONG", price, closes)
-                last_signal = label
+            if pct >= ENTRY_PCT and not trade_active:
+                send_telegram(
+                    f"🟢 ENTRADA LONG\nPreço: {price:.8f}\nRuptura: {pct:.2f}%"
+                )
+                trade_active = True
 
+        else:
+            last_alert = None  # reseta quando volta para dentro da banda
 
     except Exception as e:
         print("[ERRO]", e)
