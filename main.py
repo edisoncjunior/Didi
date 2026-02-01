@@ -56,8 +56,6 @@ def bollinger(closes):
 # INIT
 # =========================
 
-ensure_log_files()
-
 print("🚀 Bot Bollinger DOGEUSDT 15min iniciado")
 send_telegram("🚀 Bot Bollinger DOGEUSDT iniciado")
 
