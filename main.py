@@ -6,14 +6,19 @@ import time
 import hmac
 import hashlib
 import requests
-from urllib.parse import urlencode
+import numpy as np
+import pytz
 
+from datetime import datetime
+from urllib.parse import urlencode
 from security import send_telegram
 
 # =========================
 # CONFIGURAÇÕES
 # =========================
-SYMBOL = "ARPAUSDT"
+SYMBOL_SPOT = "ARPAUSDT"
+SYMBOL_FUTURES = "ARPA_USDT"
+
 INTERVAL = "1m"
 
 BOLL_PERIOD = 8
@@ -31,6 +36,9 @@ QTY = 1000
 MEXC_API_KEY = os.getenv("MEXC_API_KEY")
 MEXC_API_SECRET = os.getenv("MEXC_API_SECRET")
 
+BASE_URL = "https://contract.mexc.com"
+
+
 
 # =========================
 # TEMPO SP
@@ -44,10 +52,10 @@ def ts_str():
 # =========================
 # MEXC
 # =========================
-def get_klines(symbol, interval, limit=200):
+def get_klines(SYMBOL_SPOT, INTERVAL, limit=200):
     r = requests.get(
         "https://api.mexc.com/api/v3/klines",
-        params={"symbol": symbol, "interval": interval, "limit": limit},
+        params={"symbol": SYMBOL_SPOT, "interval": INTERVAL, "limit": limit},
         timeout=10,
         headers={"User-Agent": "Mozilla/5.0"}
     )
@@ -203,23 +211,35 @@ send_telegram("🚀 Bot Bollinger iniciado")
 
 
 # =========================
-# LOOP
+# LOOP PRINCIPAL
 # =========================
 while True:
     try:
-        klines = get_klines(SYMBOL, INTERVAL)
+        # =========================
+        # BUSCA DE KLINES E PREÇOS
+        # =========================
+        klines = get_klines(SYMBOL_SPOT, INTERVAL)
         closes = [float(k[4]) for k in klines]
         price = closes[-1]
 
         upper, lower = bollinger(closes)
 
-        # ===== ROMPIMENTO SUPERIOR =====
+        # =========================
+        # MONITORA POSIÇÃO ATIVA
+        # =========================
+        if trade_active and not has_open_position(SYMBOL_FUTURES):
+            trade_active = False
+            send_telegram(f"{ts_str()} 🔁 Trade encerrado, bot liberado")
+
+        # =========================
+        # ROMPIMENTO SUPERIOR → SHORT
+        # =========================
         if price > upper:
             pct = (price - upper) / upper * 100
 
             # ALERTA INFORMATIVO
             if last_alert != "SHORT":
-                send_telegram(f"{agora()} ⚠️ ALERTA SHORT\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
+                send_telegram(f"{ts_str()} ⚠️ ALERTA SHORT\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
                 last_alert = "SHORT"
 
             # ENTRADA REAL
@@ -227,20 +247,21 @@ while True:
                 entry_price = open_position(SYMBOL_FUTURES, "SHORT")
                 if entry_price:
                     create_sl_tp(SYMBOL_FUTURES, "SHORT", entry_price, QTY)
-                    send_telegram(f"{ts_str()} 🔴 SHORT EXECUTADO\n"
-                                  f"Entrada: {entry_price:.8f}\n"
-                                  f"SL/TP definidos"
+                    send_telegram(
+                        f"{ts_str()} 🔴 SHORT EXECUTADO\n"
+                        f"Entrada: {entry_price:.8f}\n"
+                        f"SL/TP definidos"
                     )
-#                    send_telegram(f"{agora()} 🔴 ENTRADA SHORT\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
-#                    send_telegram(f"{ts_str()} 🔴 SHORT EXECUTADO | {price}")
                     trade_active = True
 
-        # ===== ROMPIMENTO INFERIOR =====
+        # =========================
+        # ROMPIMENTO INFERIOR → LONG
+        # =========================
         elif price < lower:
             pct = (lower - price) / lower * 100
 
             if last_alert != "LONG":
-                send_telegram(f"{agora()} ⚠️ ALERTA LONG\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
+                send_telegram(f"{ts_str()} ⚠️ ALERTA LONG\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
                 last_alert = "LONG"
 
             if pct >= ENTRY_PCT and not trade_active:
@@ -254,15 +275,16 @@ while True:
                     )
                     trade_active = True
 
-                if open_position(SYMBOL_FUTURES, "LONG"):
-                    send_telegram(f"{agora()} 🟢 ENTRADA LONG\nPreço: {price:.8f}\nRuptura: {pct:.2f}%")
-                    send_telegram(f"{ts_str()} 🟢 LONG EXECUTADO | {price}")
-                    trade_active = True
-
         else:
             last_alert = None  # reseta quando volta para dentro da banda
 
-    except Exception as e:
-        print("[ERRO]", e)
+        # =========================
+        # PAUSA ENTRE CADA LOOP
+        # =========================
+        time.sleep(LOOP_SLEEP)
 
-    time.sleep(LOOP_SLEEP)
+    except Exception as e:
+        # ERRO GERAL → NÃO PARA O BOT
+        print("[ERRO]", e)
+        time.sleep(5)
+
