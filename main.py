@@ -1,6 +1,7 @@
 ﻿# main.py
 # Lógica robusta: alerta ≠ entrada
 
+import os
 import time
 import hmac
 import hashlib
