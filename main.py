@@ -34,7 +34,7 @@ import numpy as np
 # ===============================
 # CONFIGURAÇÕES
 # ===============================
-BINANCE_FAPI = "https://fapi.binance.com"
+BINANCE_FAPI = "https://fapi1.binance.com"
 KLINES_LIMIT = 200
 POST_CLOSE_DELAY_15 = 15
 
