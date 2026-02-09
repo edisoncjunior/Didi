@@ -23,7 +23,7 @@ import os
 import time
 import signal
 import logging
-import threading
+# import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -45,7 +45,7 @@ TZ_SP = ZoneInfo("America/Sao_Paulo")
 
 HTTP_TIMEOUT = 20
 HTTP_RETRIES = 3
-INTERNET_TEST_URL = "https://api.binance.com/api/v3/time"
+# INTERNET_TEST_URL = "https://api.binance.com/api/v3/time"
 
 # ===============================
 # LOG
@@ -73,7 +73,7 @@ def now_sp():
 # SHUTDOWN CONTROL
 # ===============================
 SHUTDOWN = False
-LAST_EXECUTION = time.time()
+# LAST_EXECUTION = time.time()
 
 def handle_shutdown(sig, frame):
     global SHUTDOWN
@@ -83,6 +83,7 @@ def handle_shutdown(sig, frame):
 signal.signal(signal.SIGTERM, handle_shutdown)
 signal.signal(signal.SIGINT, handle_shutdown)
 
+"""
 # ===============================
 # INTERNET CHECK
 # ===============================
@@ -98,7 +99,7 @@ def internet_ok():
     except Exception:
         LOGGER.warning("Sem conexão com a internet...")
         return False
-
+"""
 # ===============================
 # ENV
 # ===============================
@@ -152,19 +153,13 @@ def send_telegram(msg: str):
 # FETCH KLINES COM RETRY
 # ===============================
 def fetch_klines(symbol: str, interval="15m") -> pd.DataFrame:
-
     url = f"{BINANCE_FAPI}/fapi/v1/klines"
     params = {"symbol": symbol, "interval": interval, "limit": KLINES_LIMIT}
 
-    for attempt in range(HTTP_RETRIES):
+    for attempt in range(3):
         try:
-            start = time.time()
-            r = session.get(url, params=params, timeout=HTTP_TIMEOUT)
-            latency = (time.time() - start) * 1000
-
+            r = session.get(url, params=params, timeout=15)
             r.raise_for_status()
-
-            LOGGER.debug("[%s] Latência API: %.0f ms", symbol, latency)
 
             df = pd.DataFrame(r.json(), columns=[
                 "open_time","open","high","low","close","volume",
@@ -179,12 +174,12 @@ def fetch_klines(symbol: str, interval="15m") -> pd.DataFrame:
 
             return df.iloc[:-1]
 
-        except requests.exceptions.RequestException as e:
-            LOGGER.warning("[%s] Retry %d/%d erro: %s",
-                           symbol, attempt+1, HTTP_RETRIES, e)
-            time.sleep(2 * (attempt + 1))
+        except Exception as e:
+            LOGGER.warning("[%s] Retry %d falhou: %s", symbol, attempt+1, e)
+            time.sleep(2)
 
-    raise RuntimeError(f"Falha ao obter klines para {symbol}")
+    return None
+
 
 # ===============================
 # INDICADORES
@@ -306,7 +301,7 @@ def send_alert(symbol, price, signal):
         f"Horário SP: {now_sp().strftime('%d/%m/%Y %H:%M:%S')}"
     )
     send_telegram(msg)
-
+"""
 # ===============================
 # WATCHDOG
 # ===============================
@@ -316,7 +311,7 @@ def watchdog():
         if time.time() - LAST_EXECUTION > 600:
             LOGGER.error("Watchdog detectou travamento do scanner!")
         time.sleep(60)
-
+"""
 # ===============================
 # LOOP PRINCIPAL
 # ===============================
@@ -329,9 +324,9 @@ def scanner_loop():
 
     while not SHUTDOWN:
 
-        if not internet_ok():
-            time.sleep(30)
-            continue
+#        if not internet_ok():
+#            time.sleep(30)
+#            continue
 
         for symbol in SYMBOLS:
             try:
@@ -359,14 +354,14 @@ def scanner_loop():
 
             time.sleep(0.1)
 
-        LAST_EXECUTION = time.time()
+#        LAST_EXECUTION = time.time()
         time.sleep(30)
 
 # ===============================
 # MAIN
 # ===============================
 def main():
-    threading.Thread(target=watchdog, daemon=True).start()
+#    threading.Thread(target=watchdog, daemon=True).start()
     send_telegram("🤖 Scanner Didi resiliente iniciado")
     scanner_loop()
 
